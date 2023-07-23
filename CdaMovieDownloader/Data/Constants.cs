@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using System.Collections.Generic;
 
 namespace CdaMovieDownloader.Data
 {
@@ -13,11 +9,12 @@ namespace CdaMovieDownloader.Data
         public const string MD = "480p";
         public const string LD = "360p";
 
-        public static List<string> Qualities = new List<string>()
+        public static Dictionary<Quality, string> Qualities = new()
         {
-            FullHD,
-            HD,
-            MD
+            [Quality.FHD] = FullHD,
+            [Quality.HD] = HD,
+            [Quality.MD] = MD,
+            [Quality.LD] = LD,
         };
     }
 
