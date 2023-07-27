@@ -30,7 +30,7 @@ namespace CdaMovieDownloader
 
         public async Task Start()
         {
-            var episodeDetails = new List<EpisodeDetails>();
+            var episodeDetailsToProcess = new List<EpisodeDetails>();
             if(!Directory.Exists(_options.OutputDirectory))
             {
                 Directory.CreateDirectory(_options.OutputDirectory);
@@ -38,40 +38,44 @@ namespace CdaMovieDownloader
 
             if (File.Exists(_options.EpisodeDetailsPath))
             {
-                using (var reader = new StreamReader(_options.EpisodeDetailsPath))
-                {
-                    string json = reader.ReadToEnd();
-                    episodeDetails = JsonSerializer.Deserialize<List<EpisodeDetails>>(json);
-                }
-                if (File.Exists(_options.EpisodeDetailsWithDirectPath))
-                {
-                    using (var reader = new StreamReader(_options.EpisodeDetailsWithDirectPath))
-                    {
-                        string json = reader.ReadToEnd();
-                        episodeDetails = JsonSerializer.Deserialize<List<EpisodeDetails>>(json);
-                    }
-                }
-                else
-                {
-                    episodeDetails = await _episodeDetailsExtractor.EnrichCdaDirectLink(episodeDetails);
-                }
+                var json = File.ReadAllText(_options.EpisodeDetailsPath);
+                episodeDetailsToProcess = JsonSerializer.Deserialize<List<EpisodeDetails>>(json);
             }
 
-            if (episodeDetails.Any())
+            if (File.Exists(_options.EpisodeDetailsWithDirectPath))
+            {
+                var savedEpisodesWithDirect = File.ReadAllText(_options.EpisodeDetailsWithDirectPath);
+                if (!string.IsNullOrEmpty(savedEpisodesWithDirect))
+                {
+                    var episodesWithDirectLinks = JsonSerializer.Deserialize<List<EpisodeDetails>>(savedEpisodesWithDirect);
+                    if (episodeDetailsToProcess.Count != episodesWithDirectLinks.Count)
+                    {
+                        _logger.Information("Found enriching cda direct link");
+                        episodeDetailsToProcess = await _episodeDetailsExtractor.EnrichCdaDirectLink(episodeDetailsToProcess);
+                    }
+                }
+            }
+            else if (episodeDetailsToProcess.Any())
+            {
+                episodeDetailsToProcess = await _episodeDetailsExtractor.EnrichCdaDirectLink(episodeDetailsToProcess);
+            }
+
+            if (episodeDetailsToProcess.Any())
             {
                 _logger.Information("There was found a file with downloaded episodes details. Do you want to overwrite this file and proceed again? [y/n]");
                 var userChoice = Console.ReadLine();
                 if (userChoice == "y")
                 {
-                    episodeDetails = await _episodeDetailsExtractor.EnrichCdaDirectLink(_episodeDetailsExtractor.ReadEpisodeDetailsFromExternal(_options.Url));
+                    episodeDetailsToProcess = await _episodeDetailsExtractor.EnrichCdaDirectLink(_episodeDetailsExtractor.ReadEpisodeDetailsFromExternal(_options.Url));
                 }
             }
             else
             {
-                episodeDetails = await _episodeDetailsExtractor.EnrichCdaDirectLink(_episodeDetailsExtractor.ReadEpisodeDetailsFromExternal(_options.Url));
+                episodeDetailsToProcess = await _episodeDetailsExtractor.EnrichCdaDirectLink(_episodeDetailsExtractor.ReadEpisodeDetailsFromExternal(_options.Url));
             }
 
-            var episodeDetailsWithMissingDirect = episodeDetails.Where(x => string.IsNullOrWhiteSpace(x.CdaDirectUrl)).ToList();
+            //Check episodes that doesn't have CDA Direct Link to the movie to be able download it later.
+            var episodeDetailsWithMissingDirect = episodeDetailsToProcess.Where(x => string.IsNullOrWhiteSpace(x.DirectUrl)).ToList();
             if (File.Exists(_options.EpisodeDetailsWithDirectPath) && episodeDetailsWithMissingDirect.Any())
             {
                 _logger.Warning("Found direct links but there are empty. Trying to refresh");
@@ -82,24 +86,24 @@ namespace CdaMovieDownloader
                 }
             }
 
-            var missingDownloadedEpisodes = _checkEpisodes.GetMissingEpisodesNumber();
+            var missingDownloadedEpisodes = _checkEpisodes.GetMissingDownloadedEpisodesNumber();
             if (missingDownloadedEpisodes.Any())
             {
                 _logger.Warning("There was missing episodes! {missingEpisodes}. Do you want to downlaod only missing episodes? [y/n]", missingDownloadedEpisodes);
                 var userChoice = Console.ReadLine();
                 if (userChoice == "y")
                 {
-                    episodeDetails = episodeDetails.Where(x => missingDownloadedEpisodes.Contains(x.Number)).ToList();
+                    episodeDetailsToProcess = episodeDetailsToProcess.Where(x => missingDownloadedEpisodes.Contains(x.Number)).ToList();
                 }
             }
 
-            var leftEpisodesToDownload = _checkEpisodes.GetMissingEpisodes(episodeDetails);
+            var leftEpisodesToDownload = _checkEpisodes.GetMissingEpisodes(episodeDetailsToProcess);
             if (leftEpisodesToDownload.Any())
             {
-                episodeDetails = leftEpisodesToDownload.ToList();
+                episodeDetailsToProcess = leftEpisodesToDownload.ToList();
             }
             _logger.Information("Found episodes with direct links. Starting download.");
-            await _downloader.DownloadFiles(episodeDetails);
+            await _downloader.DownloadFiles(episodeDetailsToProcess);
             _logger.Information("Finished downloading.");
         }
     }

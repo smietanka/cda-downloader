@@ -7,8 +7,8 @@ namespace CdaMovieDownloader.Extensions
     {
         public static IServiceCollection AddEdgeBrowser(this IServiceCollection services) {
             var opts = new EdgeOptions();
-            opts.AddArgument("headless");
-            opts.AddArgument("log-level=3");
+            //opts.AddArgument("headless");
+            opts.AddArgument("log-level=1");
             services.AddSingleton<EdgeOptions>(opts);
             //services.AddSingleton<EdgeDriver>(new EdgeDriver(opts));
             return services;

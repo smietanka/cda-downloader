@@ -25,4 +25,10 @@ namespace CdaMovieDownloader.Data
         MD = 2,
         LD = 3
     }
+
+    public enum Provider
+    {
+        cda,
+        mp4up
+    }
 }

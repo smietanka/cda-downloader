@@ -26,14 +26,14 @@ namespace CdaMovieDownloader
         {
             try
             {
-                using (HttpResponseMessage response = await _client.GetAsync(episode.CdaDirectUrl, HttpCompletionOption.ResponseHeadersRead))
+                using (HttpResponseMessage response = await _client.GetAsync(episode.DirectUrl, HttpCompletionOption.ResponseHeadersRead))
                 {
                     response.EnsureSuccessStatusCode();
                     task.MaxValue(response.Content.Headers.ContentLength ?? 0);
 
                     task.StartTask();
 
-                    var fileNameExtension = Path.GetExtension(episode.CdaDirectUrl);
+                    var fileNameExtension = Path.GetExtension(episode.DirectUrl);
                     var fileName = Path.Combine(_options.OutputDirectory, $"{episode.Number}-{episode.Name.Replace("\"", "")}{fileNameExtension}");
 
                     using (var contentStream = await response.Content.ReadAsStreamAsync())
@@ -76,7 +76,7 @@ namespace CdaMovieDownloader
                 {
                     foreach (var group in episodeDetailsWithDirectLink.Chunk(_options.ChunkGroup))
                     {
-                        var itemsWhereDirectLinkIs = group.Where(ep => !string.IsNullOrWhiteSpace(ep.CdaDirectUrl));
+                        var itemsWhereDirectLinkIs = group.Where(ep => !string.IsNullOrWhiteSpace(ep.DirectUrl));
                         var tasks = itemsWhereDirectLinkIs.Select(async episode =>
                         {
                             var progressTask = ctx.AddTask($"{episode.Number} - {episode.Name}", new ProgressTaskSettings

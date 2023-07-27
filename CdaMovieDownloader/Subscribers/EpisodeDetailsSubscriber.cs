@@ -51,7 +51,7 @@ namespace CdaMovieDownloader.Subscribers
         {
             try
             {
-                var fileNameExtension = Path.GetExtension(episode.CdaDirectUrl);
+                var fileNameExtension = Path.GetExtension(episode.DirectUrl);
                 var fileName = $"{episode.Number}{fileNameExtension}";
                 
                 using (WebClient webClient = new WebClient())
@@ -68,12 +68,12 @@ namespace CdaMovieDownloader.Subscribers
                     };
                     webClient.Credentials = CredentialCache.DefaultCredentials;
 
-                    return webClient.DownloadFileTaskAsync(episode.CdaDirectUrl, fileName);
+                    return webClient.DownloadFileTaskAsync(episode.DirectUrl, fileName);
                 }
             }
             catch(Exception e)
             {
-                _logger.Error(e, "Something wrong with downlaod file {episode}", episode.CdaDirectUrl);
+                _logger.Error(e, "Something wrong with downlaod file {episode}", episode.DirectUrl);
                 return Task.CompletedTask;
             }
         }

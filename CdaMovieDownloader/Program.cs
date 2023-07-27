@@ -8,6 +8,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using CdaMovieDownloader.Extensions;
 using OpenQA.Selenium.Edge;
+using OpenQA.Selenium;
+using Microsoft.Extensions.Options;
 
 namespace CdaMovieDownloader
 {
@@ -41,8 +43,15 @@ namespace CdaMovieDownloader
 					services.Configure<ConfigurationOptions>(configuration.GetSection("MainSettings"));
 					services.AddSingleton<IDownloader, Downloader>();
 					services.AddSingleton<ICheckEpisodes, CheckEpisodes>();
-					services.AddSingleton<IEpisodeDetailsExtractor, EpisodeDetailsExtractor>();
-					services.AddSingleton<ICrawler, Crawler>();
+					var sp = services.BuildServiceProvider();
+					var settings = sp.GetService<IOptions<ConfigurationOptions>>();
+
+					if (settings.Value.Provider == Provider.cda)
+						services.AddSingleton<IEpisodeDetailsExtractor, CdaEpisodeDetailsExtractor>();
+					if (settings.Value.Provider == Provider.mp4up)
+						services.AddSingleton<IEpisodeDetailsExtractor, Mp4upEpisodeDetailsExtractor>();
+
+                    services.AddSingleton<ICrawler, Crawler>();
 					services.AddSingleton<Serilog.ILogger>(_logger);
 					services.AddHttpClient();
 					services.AddEdgeBrowser();
@@ -50,7 +59,6 @@ namespace CdaMovieDownloader
 				.Build();
 
 			var crawler = host.Services.GetService<ICrawler>();
-			var browser = host.Services.GetService<EdgeDriver>();
             await crawler.Start();
 		}
 	}

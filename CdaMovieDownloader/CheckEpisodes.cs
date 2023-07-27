@@ -17,7 +17,7 @@ namespace CdaMovieDownloader
             _options = options.Value;
         }
 
-        public List<int> GetMissingEpisodesNumber()
+        public List<int> GetMissingDownloadedEpisodesNumber()
         {
             var result = new List<int>();
             if (!Directory.Exists(_options.OutputDirectory))
@@ -31,7 +31,6 @@ namespace CdaMovieDownloader
             var allDownloadedEpisodes = GetDownloadedEpisodesNumbers();
             if (allDownloadedEpisodes.Any())
             {
-                var isSequential = Enumerable.Range(allDownloadedEpisodes.Min(), allDownloadedEpisodes.Count).SequenceEqual(allDownloadedEpisodes);
                 int previousEpisode = allDownloadedEpisodes.First();
                 foreach (var episode in allDownloadedEpisodes.Skip(1))
                 {
@@ -63,5 +62,19 @@ namespace CdaMovieDownloader
             var missingEpisodes = episodeDetails.Select(x => x.Number).Except(allDownloadedEpisodes);
             return episodeDetails.Where(ep => missingEpisodes.Contains(ep.Number)).ToList();
         }
+
+        public List<int> GetGapsBetween(List<int> start, List<int> end)
+        {
+            throw new NotImplementedException();
+        }
+
+        //public List<EpisodeDetails> GetGapsBetween(List<EpisodeDetails> episodeDetails)
+        //{
+        //    var allEpisodesNumbers = episodeDetails.Select(x => x.Number);
+
+        //    var isSequential = Enumerable.Range(allEpisodesNumbers.Min(), allEpisodesNumbers.Max()).SequenceEqual(allEpisodesNumbers);
+
+        //    retu
+        //}
     }
 }

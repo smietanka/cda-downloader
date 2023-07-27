@@ -11,10 +11,11 @@ namespace CdaMovieDownloader.Extractors
 {
     public interface IEpisodeDetailsExtractor
     {
-        EpisodeDetails GetEpisodeDetails(HtmlDocument document);
+        Task<EpisodeDetails> GetEpisodeDetails(HtmlDocument document);
         Task EnrichDirectLinkForEpisode(EpisodeDetails episode);
         List<EpisodeDetails> ReadEpisodeDetailsFromExternal(Uri startPage);
         Task<List<EpisodeDetails>> EnrichCdaDirectLink(List<EpisodeDetails> episodeDetails);
         Task<EpisodeDetails> EnrichCdaDirectLink(EpisodeDetails episodeDetail);
+        Task<string> GetMovieUrl(string urlWithVideo);
     }
 }
