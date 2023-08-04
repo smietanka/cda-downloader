@@ -6,7 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Net.Http;
-using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace CdaMovieDownloader
@@ -15,7 +15,6 @@ namespace CdaMovieDownloader
     {
         private readonly ConfigurationOptions _options;
         private readonly HttpClient _client;
-
         public Downloader(IOptions<ConfigurationOptions> options, HttpClient client)
         {
             _options = options.Value;
@@ -59,39 +58,62 @@ namespace CdaMovieDownloader
             }
         }
 
-        public async Task DownloadFiles(List<EpisodeDetails> episodeDetailsWithDirectLink)
+        public async Task Download(EpisodeDetails episode)
         {
-            await AnsiConsole
-                .Progress()
-                .AutoClear(true)
-                .Columns(new ProgressColumn[]
+            try
+            {
+                using (HttpResponseMessage response = await _client.GetAsync(episode.DirectUrl, HttpCompletionOption.ResponseHeadersRead))
                 {
-                    new SpinnerColumn(),
-                    new TaskDescriptionColumn(),
-                    new ProgressBarColumn(),
-                    new PercentageColumn(),
-                    new RemainingTimeColumn()
-                })
-                .StartAsync(async ctx =>
-                {
-                    foreach (var group in episodeDetailsWithDirectLink.Chunk(_options.ChunkGroup))
+                    response.EnsureSuccessStatusCode();
+                    var fileNameExtension = Path.GetExtension(episode.DirectUrl);
+                    var fileName = Path.Combine(_options.OutputDirectory, $"{episode.Number}-{episode.Name.Replace("\"", "")}{fileNameExtension}");
+
+                    using (var contentStream = await response.Content.ReadAsStreamAsync())
+                    using (var fileStream = new FileStream(fileName, FileMode.Create, FileAccess.Write, FileShare.None, 8192, true))
                     {
-                        var itemsWhereDirectLinkIs = group.Where(ep => !string.IsNullOrWhiteSpace(ep.DirectUrl));
-                        var tasks = itemsWhereDirectLinkIs.Select(async episode =>
+                        var buffer = new byte[8192];
+                        while (true)
                         {
-                            var progressTask = ctx.AddTask($"{episode.Number} - {episode.Name}", new ProgressTaskSettings
+                            var read = await contentStream.ReadAsync(buffer);
+                            if (read == 0)
                             {
-                                AutoStart = true,
-                                MaxValue = 100,
-                            });
-                            await Download(progressTask, episode);
-                            return true;
-                        });
-                        var isSuccess = await Task.WhenAll(tasks);
-                        await Task.Delay(1000);
+                                break;
+                            }
+                            await fileStream.WriteAsync(buffer.AsMemory(0, read));
+                        }
                     }
+                }
+            }
+            catch (Exception ex)
+            {
+                AnsiConsole.MarkupLine($"[red]Error:[/] {ex}");
+            }
+        }
+
+        public async Task DownloadFile(EpisodeDetails episode)
+        {
+            await Download(episode);
+        }
+
+        public async Task DownloadFiles(ProgressContext progressContext, List<EpisodeDetails> episodeDetailsWithDirectLink)
+        {
+            foreach (var group in episodeDetailsWithDirectLink
+                .Where(ep => !string.IsNullOrWhiteSpace(ep.DirectUrl))
+                .Chunk(_options.ChunkGroup))
+            {
+                var tasks = group.Select(async episode =>
+                {
+                    var progressTask = progressContext.AddTask($"{episode.Number} - {episode.Name}", new ProgressTaskSettings
+                    {
+                        AutoStart = true,
+                        MaxValue = 100,
+                    });
+                    await Download(progressTask, episode);
                     return true;
                 });
+                var isSuccess = await Task.WhenAll(tasks);
+                await Task.Delay(1000);
+            }
         }
     }
 }

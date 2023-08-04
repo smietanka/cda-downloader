@@ -1,7 +1,11 @@
 ﻿using CdaMovieDownloader.Data;
+using CdaMovieDownloader.Services;
+using CdaMovieDownloader.Subscribers;
 using HtmlAgilityPack;
 using Polly;
+using PubSub;
 using Serilog;
+using Spectre.Console;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -18,16 +22,21 @@ namespace CdaMovieDownloader.Extractors
     {
         public abstract Provider Provider { get; }
         public abstract string playerElementXPath { get; }
+        private static readonly object _locker = new();
         public readonly ILogger _logger;
+        public readonly Hub _hub;
         public readonly ConfigurationOptions _options;
         public readonly ICheckEpisodes _checkEpisodes;
         private readonly Regex _episodeNumber = new(@"\d{2,4}", RegexOptions.Compiled);
         private readonly Regex _episodeName = new(@"""(.*)""", RegexOptions.Compiled);
-        protected BaseEpisodeDetailsExtractor(ILogger logger, ConfigurationOptions options, ICheckEpisodes checkEpisodes)
+        private readonly IEpisodeService _episodeService;
+        protected BaseEpisodeDetailsExtractor(ILogger logger, ConfigurationOptions options, ICheckEpisodes checkEpisodes, Hub hub, IEpisodeService episodeService)
         {
             _logger = logger;
             _options = options;
             _checkEpisodes = checkEpisodes;
+            _hub = hub;
+            _episodeService = episodeService;
         }
 
         public abstract Task EnrichDirectLinkForEpisode(EpisodeDetails episode);
@@ -61,6 +70,8 @@ namespace CdaMovieDownloader.Extractors
                         {
                             return new EpisodeDetails
                             {
+                                AnimeUrl = _options.Url.ToString(),
+                                Id = Guid.NewGuid(),
                                 Url = movieUrl,
                                 Name = string.Join("_", episodeName.Value.Split(Path.GetInvalidFileNameChars())),
                                 Number = int.Parse(episodeNumber.Value)
@@ -69,62 +80,48 @@ namespace CdaMovieDownloader.Extractors
                     }
                 }
             }
-            return null;
+            return default;
         }
 
-        public virtual async Task<List<EpisodeDetails>> EnrichCdaDirectLink(List<EpisodeDetails> episodeDetails)
+        public virtual Task<List<EpisodeDetails>> EnrichCdaDirectLink(ProgressContext progressContext, List<EpisodeDetails> episodeDetails)
         {
-            foreach (var episode in episodeDetails)
-            {
-                var currentSavedEpisodes = new List<EpisodeDetails>();
-                if (File.Exists(_options.EpisodeDetailsWithDirectPath))
+            Parallel.ForEach(episodeDetails, new ParallelOptions() { MaxDegreeOfParallelism = _options.ParallelThreads },
+                async episode =>
                 {
-                    var ca = File.ReadAllText(_options.EpisodeDetailsWithDirectPath);
-                    currentSavedEpisodes = JsonSerializer.Deserialize<List<EpisodeDetails>>(ca);
-                    if (currentSavedEpisodes.Any(savedEpisode => savedEpisode.Number == episode.Number))
-                    {
-                        continue;
-                    }
-                }
+                    AnsiConsole.WriteLine($"Getting direct link of {episode.Number}:{episode.Name}");
+                    await EnrichCdaDirectLink(progressContext, episode);
+                });
 
-                _logger.Information($"Getting direct link of {episode.Number}:{episode.Name}");
-                await EnrichDirectLinkForEpisode(episode);
-                if (!string.IsNullOrEmpty(episode.DirectUrl))
-                {
-                    currentSavedEpisodes.Add(episode);
-                    var jsonWithNewEpisode = JsonSerializer.Serialize(currentSavedEpisodes);
-                    File.WriteAllText(_options.EpisodeDetailsWithDirectPath, jsonWithNewEpisode);
-                    await Task.Delay(20000);
-                }
-            }
-
-            return episodeDetails;
+            return Task.FromResult(episodeDetails);
         }
 
-        public async Task<EpisodeDetails> EnrichCdaDirectLink(EpisodeDetails episodeDetail)
+        public async Task<EpisodeDetails> EnrichCdaDirectLink(ProgressContext progressContext, EpisodeDetails episodeDetail)
         {
             await EnrichDirectLinkForEpisode(episodeDetail);
+            if (!string.IsNullOrWhiteSpace(episodeDetail.DirectUrl))
+            {
+                await EditEntityAndDownload(progressContext, episodeDetail);
+            }
             return episodeDetail;
         }
 
         public List<EpisodeDetails> ReadEpisodeDetailsFromExternal(Uri startPage)
         {
+            var result = new List<EpisodeDetails>();
             var web = new HtmlWeb();
-            var concurrentResult = new ConcurrentBag<EpisodeDetails>();
-            var u = new List<int>() { 1, 2, 3, 5, 8 }
+            var retryPolicy = new List<int>() { 1, 2, 3, 5, 8 }
             .Select(w => TimeSpan.FromSeconds(w));
             var policy = Policy
                 .Handle<Exception>()
-                .WaitAndRetryAsync(u, (ex, num) =>
+                .WaitAndRetryAsync(retryPolicy, (ex, num) =>
                 {
-                    _logger.Warning("Error {ex}. Waiting {num}", ex, num);
+                    AnsiConsole.WriteException(ex);
                 });
             var startPageDocument = web.Load(startPage);
             var episodeList = startPageDocument.DocumentNode.SelectNodes("//tr[@class='lista_hover']");
             if (episodeList != null && episodeList.Any())
             {
                 Parallel.ForEach(episodeList, new ParallelOptions { MaxDegreeOfParallelism = 1 }, async episode =>
-                //foreach (var episode in episodeList)
                 {
                     var hrefToMovie = episode.SelectSingleNode(".//a[@class='sub_inner_link']");
                     if (hrefToMovie == null)
@@ -135,7 +132,7 @@ namespace CdaMovieDownloader.Extractors
                     if (hrefToMovie != null)
                     {
                         var episodePageHref = hrefToMovie.Attributes["href"].Value;
-                        _logger.Information("Found episodePageHref {episodePageHref}", episodePageHref);
+                        AnsiConsole.WriteLine($"Found episodePageHref {episodePageHref}");
                         var uriBuilder = new UriBuilder(startPage.Scheme, startPage.Host, startPage.Port, episodePageHref);
                         var episodePageUrl = uriBuilder.ToString();
 
@@ -144,33 +141,27 @@ namespace CdaMovieDownloader.Extractors
                             var episodePageWeb = new HtmlWeb();
                             var concreteEpisodePage = episodePageWeb.Load(episodePageUrl);
                             var episodeDetail = await GetEpisodeDetails(concreteEpisodePage);
-                            if (episodeDetail is not null)
+                            if (!episodeDetail.Equals(default))
                             {
-                                concurrentResult.Add(episodeDetail);
+                                await _episodeService.AddEpisode(episodeDetail);
+                                result.Add(episodeDetail);
                             }
                             else
                             {
-                                _logger.Error("Something wrong with parsing episode details.");
-                                //throw new Exception("Something wrong with parsing episode details.");
+                                AnsiConsole.MarkupLine("[red][bold]Something wrong with parsing episode details.[/]");
                             }
                         });
                     }
-                    //}
                 });
             }
-
-            var result = new List<EpisodeDetails>();
-            //Check gaps between found episodes on website and downloaded ones 
-            var leftEpisodes = concurrentResult.OrderBy(x => x.Number)
-                .Select(x => x.Number).Except(_checkEpisodes.GetDownloadedEpisodesNumbers());
-            if (leftEpisodes.Any())
-            {
-                result = concurrentResult.Where(w => leftEpisodes.Contains(w.Number)).ToList();
-            }
-
-            var episodeDetailsJson = JsonSerializer.Serialize(concurrentResult.OrderBy(x => x.Number));
-            File.WriteAllText(_options.EpisodeDetailsPath, episodeDetailsJson);
             return result;
+        }
+
+        private async Task EditEntityAndDownload(ProgressContext progressContext, EpisodeDetails episode)
+        {
+            await _episodeService.EditDirectLinkForEpisode(episode);
+            _hub.Publish(new EpisodeWithContext(progressContext, episode));
+            await Task.Delay(10000);
         }
     }
 }

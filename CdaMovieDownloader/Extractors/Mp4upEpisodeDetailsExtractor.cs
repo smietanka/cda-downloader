@@ -1,8 +1,9 @@
 ﻿using CdaMovieDownloader.Data;
-using HtmlAgilityPack;
+using CdaMovieDownloader.Services;
 using Microsoft.Extensions.Options;
 using OpenQA.Selenium.Edge;
 using OpenQA.Selenium.Support.UI;
+using PubSub;
 using Serilog;
 using System;
 using System.Threading.Tasks;
@@ -13,7 +14,12 @@ namespace CdaMovieDownloader.Extractors
     {
         private readonly EdgeOptions _edgeOptions;
 
-        public Mp4upEpisodeDetailsExtractor(ILogger logger, IOptions<ConfigurationOptions> options, EdgeOptions edgeOptions, ICheckEpisodes checkEpisodes) : base(logger, options.Value, checkEpisodes)
+        public Mp4upEpisodeDetailsExtractor(ILogger logger, 
+            IOptions<ConfigurationOptions> options, 
+            EdgeOptions edgeOptions, 
+            ICheckEpisodes checkEpisodes,
+            IEpisodeService episodeService,
+            Hub hub) : base(logger, options.Value, checkEpisodes, hub, episodeService)
         {
             _edgeOptions = edgeOptions;
         }

@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Spectre.Console;
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
@@ -8,6 +9,6 @@ namespace CdaMovieDownloader
 {
     public interface ICrawler
     {
-        Task Start();
+        Task Start(ProgressContext progressContext);
     }
 }

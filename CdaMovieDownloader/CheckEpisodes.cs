@@ -1,9 +1,11 @@
 ﻿using CdaMovieDownloader.Data;
+using CdaMovieDownloader.Services;
 using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace CdaMovieDownloader
@@ -11,70 +13,30 @@ namespace CdaMovieDownloader
     internal class CheckEpisodes : ICheckEpisodes
     {
         private readonly ConfigurationOptions _options;
+        private readonly IEpisodeService _episodeService;
 
-        public CheckEpisodes(IOptions<ConfigurationOptions> options)
+        public CheckEpisodes(IOptions<ConfigurationOptions> options, IEpisodeService episodeService)
         {
             _options = options.Value;
-        }
-
-        public List<int> GetMissingDownloadedEpisodesNumber()
-        {
-            var result = new List<int>();
-            if (!Directory.Exists(_options.OutputDirectory))
-            {
-                Directory.CreateDirectory(_options.OutputDirectory);
-            }
-            if (!Directory.GetFiles(_options.OutputDirectory).Any())
-            {
-                return result;
-            }
-            var allDownloadedEpisodes = GetDownloadedEpisodesNumbers();
-            if (allDownloadedEpisodes.Any())
-            {
-                int previousEpisode = allDownloadedEpisodes.First();
-                foreach (var episode in allDownloadedEpisodes.Skip(1))
-                {
-                    var diff = episode - previousEpisode;
-                    if (diff != 1)
-                    {
-                        var rangeToAdd = Enumerable.Range(previousEpisode + 1, diff - 1);
-                        result.AddRange(rangeToAdd);
-                    }
-                    previousEpisode = episode;
-                }
-                return result.OrderBy(x => x).ToList();
-            }
-            return result;
+            _episodeService = episodeService;
         }
 
         public List<int> GetDownloadedEpisodesNumbers()
         {
             return Directory.GetFiles(_options.OutputDirectory, "*.mp4")
             .Select(x => Path.GetFileNameWithoutExtension(x))
-            .Select(x => Regex.Match(x, @"\d{1,4}").Value)
+            .Select(x => Regex.Match(x, @"^(\d{1,4})").Value)
             .Select(x => int.Parse(x))
             .OrderBy(x => x).ToList();
         }
 
         public List<EpisodeDetails> GetMissingEpisodes(List<EpisodeDetails> episodeDetails)
         {
+            var baseEpisodes = _episodeService.GetAll(ep => !string.IsNullOrWhiteSpace(ep.Url));
             var allDownloadedEpisodes = GetDownloadedEpisodesNumbers();
-            var missingEpisodes = episodeDetails.Select(x => x.Number).Except(allDownloadedEpisodes);
-            return episodeDetails.Where(ep => missingEpisodes.Contains(ep.Number)).ToList();
+            var missingEpisodesNumbers = baseEpisodes.Where(ep => !allDownloadedEpisodes.Contains(ep.Number)).Select(e => e.Number);
+            var missingEpisodes = episodeDetails.Where(e => missingEpisodesNumbers.Contains(e.Number)).ToList();
+            return missingEpisodes;
         }
-
-        public List<int> GetGapsBetween(List<int> start, List<int> end)
-        {
-            throw new NotImplementedException();
-        }
-
-        //public List<EpisodeDetails> GetGapsBetween(List<EpisodeDetails> episodeDetails)
-        //{
-        //    var allEpisodesNumbers = episodeDetails.Select(x => x.Number);
-
-        //    var isSequential = Enumerable.Range(allEpisodesNumbers.Min(), allEpisodesNumbers.Max()).SequenceEqual(allEpisodesNumbers);
-
-        //    retu
-        //}
     }
 }

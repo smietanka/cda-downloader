@@ -1,6 +1,7 @@
 ﻿using CdaMovieDownloader.Data;
 using HtmlAgilityPack;
 using OpenQA.Selenium.Edge;
+using Spectre.Console;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -14,8 +15,8 @@ namespace CdaMovieDownloader.Extractors
         Task<EpisodeDetails> GetEpisodeDetails(HtmlDocument document);
         Task EnrichDirectLinkForEpisode(EpisodeDetails episode);
         List<EpisodeDetails> ReadEpisodeDetailsFromExternal(Uri startPage);
-        Task<List<EpisodeDetails>> EnrichCdaDirectLink(List<EpisodeDetails> episodeDetails);
-        Task<EpisodeDetails> EnrichCdaDirectLink(EpisodeDetails episodeDetail);
+        Task<List<EpisodeDetails>> EnrichCdaDirectLink(ProgressContext progressContext, List<EpisodeDetails> episodeDetails);
+        Task<EpisodeDetails> EnrichCdaDirectLink(ProgressContext progressContext, EpisodeDetails episodeDetail);
         Task<string> GetMovieUrl(string urlWithVideo);
     }
 }
