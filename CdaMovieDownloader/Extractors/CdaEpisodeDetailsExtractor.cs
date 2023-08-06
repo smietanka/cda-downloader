@@ -1,4 +1,5 @@
-﻿using CdaMovieDownloader.Data;
+﻿using CdaMovieDownloader.Common.Options;
+using CdaMovieDownloader.Data;
 using CdaMovieDownloader.Services;
 using CdaMovieDownloader.Subscribers;
 using HtmlAgilityPack;
@@ -22,42 +23,46 @@ namespace CdaMovieDownloader.Extractors
         private readonly EdgeDriverService _edgeDriverService;
         private readonly EpisodeDetailsSubscriber _episodeDetailsSubscriber;
         private readonly IHttpClientFactory _httpClientFactory;
+        private readonly Configuration _configuration;
+
         private readonly IEpisodeService _episodeService;
         private static readonly object _locker = new();
 
-        public CdaEpisodeDetailsExtractor(ILogger logger, 
-            EdgeOptions edgeOptions, 
-            EdgeDriverService edgeDriverService, 
-            IOptions<ConfigurationOptions> options, 
-            IHttpClientFactory httpClientFactory, 
+        public CdaEpisodeDetailsExtractor(ILogger logger,
+            EdgeOptions edgeOptions,
+            EdgeDriverService edgeDriverService,
+            IOptions<ConfigurationOptions> options,
+            Configuration configuration,
+            IHttpClientFactory httpClientFactory,
             ICheckEpisodes checkEpisodes,
             Hub hub,
             IEpisodeService episodeService,
             EpisodeDetailsSubscriber episodeDetailsSubscriber)
-            : base(logger, options.Value, checkEpisodes, hub, episodeService)
+            : base(logger, options.Value, checkEpisodes, hub, episodeService, configuration)
         {
             _edgeOptions = edgeOptions;
             _httpClientFactory = httpClientFactory;
             this._episodeService = episodeService;
             _episodeDetailsSubscriber = episodeDetailsSubscriber;
             _edgeDriverService = edgeDriverService;
+            _configuration = configuration;
         }
 
         public override Provider Provider => Provider.cda;
 
         public override string playerElementXPath => throw new NotImplementedException();
 
-        public override async Task EnrichDirectLinkForEpisode(EpisodeDetails episode)
+        public override async Task EnrichDirectLinkForEpisode(Episode episode)
         {
-            using(var browser = new EdgeDriver(_edgeDriverService, _edgeOptions))
+            using (var browser = new EdgeDriver(_edgeDriverService, _edgeOptions))
             {
                 var waiter = new WebDriverWait(browser, TimeSpan.FromSeconds(2));
-                foreach (var quality in Constants.Qualities.SkipWhile(x => x.Key != _options.MaxQuality))
+                foreach (var quality in Constants.Qualities.SkipWhile(x => x.Key != _configuration.MaxQuality))
                 {
                     try
                     {
                         var urlToEpisode = $"{episode.Url}?wersja={quality.Value}";
-    
+
                         browser.Navigate().GoToUrl(urlToEpisode);
 
                         try
@@ -81,11 +86,11 @@ namespace CdaMovieDownloader.Extractors
                                 continue;
                             }
                         }
-                        catch(Exception)
+                        catch (Exception)
                         {
 
                         }
-                        
+
 
                         var cdaVideoElement = waiter.Until(x => browser.FindElement(OpenQA.Selenium.By.XPath("//video[@class='pb-video-player']")));
                         if (cdaVideoElement != null)
@@ -99,7 +104,7 @@ namespace CdaMovieDownloader.Extractors
                             }
                             if (!string.IsNullOrEmpty(cdaDirectLinkToMovie))
                             {
-                                lock(_locker)
+                                lock (_locker)
                                 {
                                     AnsiConsole.WriteLine($"Found direct link for episode number {episode.Number} in {quality}");
                                     //_logger.Information("Found direct link for episode number {number} in {quality}", episode.Number, quality);

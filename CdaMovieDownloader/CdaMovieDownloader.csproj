@@ -7,7 +7,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <None Remove="Data\Constants.cs~RF42779570.TMP" />
+    <None Remove="Common\Constants.cs~RF42779570.TMP" />
     <None Remove="Extractors\EpisodeDetailsExtractor.cs~RF4258587e.TMP" />
     <None Remove="msedgedriver.exe" />
   </ItemGroup>

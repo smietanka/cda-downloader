@@ -1,22 +1,18 @@
-﻿using CdaMovieDownloader.Data;
-using HtmlAgilityPack;
-using OpenQA.Selenium.Edge;
+﻿using HtmlAgilityPack;
 using Spectre.Console;
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace CdaMovieDownloader.Extractors
 {
     public interface IEpisodeDetailsExtractor
     {
-        Task<EpisodeDetails> GetEpisodeDetails(HtmlDocument document);
-        Task EnrichDirectLinkForEpisode(EpisodeDetails episode);
-        List<EpisodeDetails> ReadEpisodeDetailsFromExternal(Uri startPage);
-        Task<List<EpisodeDetails>> EnrichCdaDirectLink(ProgressContext progressContext, List<EpisodeDetails> episodeDetails);
-        Task<EpisodeDetails> EnrichCdaDirectLink(ProgressContext progressContext, EpisodeDetails episodeDetail);
+        Task<Episode> GetEpisodeDetails(HtmlDocument document);
+        Task EnrichDirectLinkForEpisode(Episode episode);
+        List<Episode> ReadEpisodeDetailsFromExternal(Uri startPage);
+        Task<List<Episode>> EnrichDirectLink(ProgressContext progressContext, List<Episode> episodeDetails);
+        Task<Episode> EnrichDirectLink(ProgressContext progressContext, Episode episodeDetail);
         Task<string> GetMovieUrl(string urlWithVideo);
     }
 }

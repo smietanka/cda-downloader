@@ -1,11 +1,10 @@
-﻿using CdaMovieDownloader.Contexts;
-using CdaMovieDownloader.Data;
+﻿using CdaMovieDownloader.Common.Options;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
-using System.Text;
 using System.Threading.Tasks;
 
 namespace CdaMovieDownloader.Services
@@ -13,22 +12,24 @@ namespace CdaMovieDownloader.Services
     public class EpisodeService : IEpisodeService
     {
         private readonly MovieContext _movieContext;
-        private readonly ConfigurationOptions _configuration;
+        private readonly Configuration _configuration;
 
-        public EpisodeService(MovieContext movieContext, IOptions<ConfigurationOptions> options)
+        public EpisodeService(MovieContext movieContext, Configuration configuration)
         {
             _movieContext = movieContext;
-            _configuration = options.Value;
+            _configuration = configuration;
         }
 
-        public EpisodeDetails GetEpisodeDetails(int number)
+        public Episode GetEpisodeDetails(Episode episodeDetails)
         {
-            return _movieContext.EpisodesDetails.FirstOrDefault(ep => ep.Number == number);
+            return _movieContext.Episodes
+                .Include(e => e.Configuration)
+                .FirstOrDefault(ep => ep.Number == episodeDetails.Number && ep.ConfigurationId == _configuration.Id);
         }
 
-        public async Task EditDirectLinkForEpisode(EpisodeDetails episodeDetails)
+        public async Task EditDirectLinkForEpisode(Episode episodeDetails)
         {
-            var episodeToEdit = GetEpisodeDetails(episodeDetails.Number);
+            var episodeToEdit = GetEpisodeDetails(episodeDetails);
             if (episodeToEdit is not null)
             {
                 episodeToEdit.DirectUrl = episodeDetails.DirectUrl;
@@ -36,23 +37,24 @@ namespace CdaMovieDownloader.Services
             await _movieContext.SaveChangesAsync();
         }
 
-        public async Task AddEpisode(EpisodeDetails episodeDetails)
+        public async Task AddEpisode(Episode episodeDetails)
         {
             await _movieContext.AddAsync(episodeDetails);
             await _movieContext.SaveChangesAsync();
         }
 
-        public List<EpisodeDetails> GetAll()
+        public List<Episode> GetAll()
         {
-            return _movieContext.EpisodesDetails
-                .Where(ep => ep.AnimeUrl == _configuration.Url.ToString())
+            return _movieContext.Episodes
+                .Include(_ => _.Configuration)
+                //.Where(ep => ep.AnimeUrl == _configuration.Url.ToString())
                 .ToList();
         }
 
-        public List<EpisodeDetails> GetAll(Expression<Func<EpisodeDetails, bool>> prediction)
+        public List<Episode> GetAll(Expression<Func<Episode, bool>> prediction)
         {
-            return _movieContext.EpisodesDetails
-                .Where(ep => ep.AnimeUrl == _configuration.Url.ToString())
+            return _movieContext.Episodes
+                //.Where(ep => ep.AnimeUrl == _configuration.Url.ToString())
                 .Where(prediction).ToList();
         }
     }

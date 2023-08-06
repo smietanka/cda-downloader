@@ -1,7 +1,5 @@
-﻿using CdaMovieDownloader.Data;
-using CdaMovieDownloader.Extractors;
+﻿using CdaMovieDownloader.Extractors;
 using CdaMovieDownloader.Services;
-using Microsoft.Extensions.Options;
 using Serilog;
 using Spectre.Console;
 using System;
@@ -17,31 +15,32 @@ namespace CdaMovieDownloader
         private readonly IDownloader _downloader;
         private readonly IEpisodeDetailsExtractor _episodeDetailsExtractor;
         private readonly ICheckEpisodes _checkEpisodes;
-        private readonly ConfigurationOptions _options;
         private readonly IEpisodeService _episodeService;
+        private readonly Configuration _configuration;
 
-        public Crawler(ILogger logger, IDownloader downloader, IEpisodeDetailsExtractor episodeDetailsExtractor, ICheckEpisodes checkEpisodes, IOptions<ConfigurationOptions> options, IEpisodeService episodeService)
+        public Crawler(ILogger logger, IDownloader downloader, IEpisodeDetailsExtractor episodeDetailsExtractor, 
+            ICheckEpisodes checkEpisodes, Configuration configuration, IEpisodeService episodeService)
         {
             _logger = logger;
             _downloader = downloader;
             _episodeDetailsExtractor = episodeDetailsExtractor;
             _checkEpisodes = checkEpisodes;
+            _configuration = configuration;
             _episodeService = episodeService;
-            _options = options.Value;
         }
 
         public async Task Start(ProgressContext progressContext)
         {
-            
-            if (!Directory.Exists(_options.OutputDirectory))
+
+            if (!Directory.Exists(_configuration.OutputDirectory))
             {
-                Directory.CreateDirectory(_options.OutputDirectory);
+                Directory.CreateDirectory(_configuration.OutputDirectory);
             }
 
-            var episodeDetailsToProcess = _episodeService.GetAll();
-            if(!episodeDetailsToProcess.Any())
+            var episodeDetailsToProcess = _configuration.Episodes.ToList();
+            if (!episodeDetailsToProcess.Any())
             {
-                episodeDetailsToProcess = await _episodeDetailsExtractor.EnrichCdaDirectLink(progressContext, _episodeDetailsExtractor.ReadEpisodeDetailsFromExternal(_options.Url));
+                episodeDetailsToProcess = await _episodeDetailsExtractor.EnrichDirectLink(progressContext, _episodeDetailsExtractor.ReadEpisodeDetailsFromExternal(new Uri(_configuration.Url)));
             }
 
             //filter episodes that are missed on the disk
@@ -52,14 +51,14 @@ namespace CdaMovieDownloader
                 AnsiConsole.WriteLine("Do you want to download missing episodes? [y/n] ");
                 if (Console.ReadLine() == "y")
                 {
-                    await _downloader.DownloadFiles(progressContext, episodeDetailsToProcess);
+                    _downloader.DownloadFiles(progressContext, episodeDetailsToProcess);
                 }
             }
 
             //Check episodes that doesn't have CDA Direct Link to the movie to be able download it later.
-            var episodeDetailsWithMissingDirect = _episodeService.GetAll(ep => string.IsNullOrWhiteSpace(ep.DirectUrl)).ToList();
-            var episodesToDownload = await _episodeDetailsExtractor.EnrichCdaDirectLink(progressContext, episodeDetailsWithMissingDirect);
-
+            var episodeDetailsWithMissingDirect = _configuration.Episodes.Where(ep => string.IsNullOrWhiteSpace(ep.DirectUrl)).ToList();
+            episodeDetailsWithMissingDirect = _checkEpisodes.GetMissingEpisodes(episodeDetailsWithMissingDirect);
+            var episodesToDownload = await _episodeDetailsExtractor.EnrichDirectLink(progressContext, episodeDetailsWithMissingDirect);
         }
     }
 }

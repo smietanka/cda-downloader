@@ -5,7 +5,8 @@ namespace CdaMovieDownloader.Extensions
 {
     internal static class ServiceCollectionExtensions
     {
-        public static IServiceCollection AddEdgeBrowser(this IServiceCollection services) {
+        public static IServiceCollection AddEdgeBrowser(this IServiceCollection services)
+        {
             var opts = new EdgeOptions();
             opts.AddArgument("headless");
             opts.SetLoggingPreference("Warning", OpenQA.Selenium.LogLevel.Warning);

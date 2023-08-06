@@ -1,4 +1,5 @@
-﻿using CdaMovieDownloader.Data;
+﻿using CdaMovieDownloader.Common.Options;
+using CdaMovieDownloader.Data;
 using CdaMovieDownloader.Services;
 using Microsoft.Extensions.Options;
 using OpenQA.Selenium.Edge;
@@ -14,12 +15,13 @@ namespace CdaMovieDownloader.Extractors
     {
         private readonly EdgeOptions _edgeOptions;
 
-        public Mp4upEpisodeDetailsExtractor(ILogger logger, 
-            IOptions<ConfigurationOptions> options, 
-            EdgeOptions edgeOptions, 
+        public Mp4upEpisodeDetailsExtractor(ILogger logger,
+            IOptions<ConfigurationOptions> options,
+            EdgeOptions edgeOptions,
             ICheckEpisodes checkEpisodes,
             IEpisodeService episodeService,
-            Hub hub) : base(logger, options.Value, checkEpisodes, hub, episodeService)
+            Configuration configuration,
+            Hub hub) : base(logger, options.Value, checkEpisodes, hub, episodeService, configuration)
         {
             _edgeOptions = edgeOptions;
         }
@@ -28,7 +30,7 @@ namespace CdaMovieDownloader.Extractors
 
         public override string playerElementXPath => "//video[@class='vjs-tech']";
 
-        public override Task EnrichDirectLinkForEpisode(EpisodeDetails episode)
+        public override Task EnrichDirectLinkForEpisode(Episode episode)
         {
             episode.DirectUrl = episode.Url;
             return Task.CompletedTask;

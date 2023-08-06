@@ -1,6 +1,5 @@
-﻿using Serilog;
-using PubSub;
-using Spectre.Console;
+﻿using PubSub;
+using Serilog;
 
 namespace CdaMovieDownloader.Subscribers
 {
@@ -19,12 +18,7 @@ namespace CdaMovieDownloader.Subscribers
             _hub.Subscribe<EpisodeWithContext>(this, async data =>
             {
                 data.Deconstruct(out var progressContext, out var episode);
-                var progressTask = progressContext.AddTask($"{episode.Number} - {episode.Name}", new ProgressTaskSettings
-                {
-                    AutoStart = true,
-                    MaxValue = 100,
-                });
-                await _downloader.Download(progressTask, episode);
+                await _downloader.Download(progressContext, episode);
             });
         }
     }

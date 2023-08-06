@@ -1,4 +1,5 @@
-﻿using CdaMovieDownloader.Data;
+﻿using CdaMovieDownloader.Common.Options;
+using CdaMovieDownloader.Data;
 using CdaMovieDownloader.Services;
 using CdaMovieDownloader.Subscribers;
 using HtmlAgilityPack;
@@ -7,12 +8,9 @@ using PubSub;
 using Serilog;
 using Spectre.Console;
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Text;
-using System.Text.Json;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
@@ -23,32 +21,37 @@ namespace CdaMovieDownloader.Extractors
         public abstract Provider Provider { get; }
         public abstract string playerElementXPath { get; }
         private static readonly object _locker = new();
-        public readonly ILogger _logger;
-        public readonly Hub _hub;
-        public readonly ConfigurationOptions _options;
+        private readonly ILogger _logger;
+        private readonly Hub _hub;
+        private readonly ConfigurationOptions _options;
+
         public readonly ICheckEpisodes _checkEpisodes;
         private readonly Regex _episodeNumber = new(@"\d{2,4}", RegexOptions.Compiled);
         private readonly Regex _episodeName = new(@"""(.*)""", RegexOptions.Compiled);
         private readonly IEpisodeService _episodeService;
-        protected BaseEpisodeDetailsExtractor(ILogger logger, ConfigurationOptions options, ICheckEpisodes checkEpisodes, Hub hub, IEpisodeService episodeService)
+        private readonly Configuration _configuration;
+
+        protected BaseEpisodeDetailsExtractor(ILogger logger, ConfigurationOptions options, ICheckEpisodes checkEpisodes, Hub hub, IEpisodeService episodeService, Configuration configuration)
         {
             _logger = logger;
             _options = options;
             _checkEpisodes = checkEpisodes;
             _hub = hub;
             _episodeService = episodeService;
+            _configuration = configuration;
         }
 
-        public abstract Task EnrichDirectLinkForEpisode(EpisodeDetails episode);
+        public abstract Task EnrichDirectLinkForEpisode(Episode episode);
         public abstract Task<string> GetMovieUrl(string document);
 
-        public virtual async Task<EpisodeDetails> GetEpisodeDetails(HtmlDocument document)
+        public virtual async Task<Episode> GetEpisodeDetails(HtmlDocument document)
         {
             if (document != null)
             {
+                var url = new Uri(_configuration.Url);
                 var playerRelLink = document.DocumentNode.SelectSingleNode($"//td[@class='center'][contains(text(),'{Provider}')]/parent::* //span[@rel]").Attributes["rel"].Value;
                 var moviePath = $"odtwarzacz-{playerRelLink}.html";
-                var readyLinkToMovie = new UriBuilder(_options.Url.Scheme, _options.Url.Host, _options.Url.Port, moviePath).ToString();
+                var readyLinkToMovie = new UriBuilder(url.Scheme, url.Host, url.Port, moviePath).ToString();
 
                 var episodeDescriptionElement = document.DocumentNode.SelectSingleNode("//head/meta[@property='og:title']").Attributes["content"];
                 var episodeNameElement = document.DocumentNode.SelectSingleNode("//h1[@class='pod_naglowek']");
@@ -64,17 +67,17 @@ namespace CdaMovieDownloader.Extractors
                 {
                     if (!string.IsNullOrWhiteSpace(playerRelLink))
                     {
-                        
+
                         var movieUrl = await GetMovieUrl(readyLinkToMovie);
                         if (movieUrl != null)
                         {
-                            return new EpisodeDetails
+                            return new Episode
                             {
-                                AnimeUrl = _options.Url.ToString(),
                                 Id = Guid.NewGuid(),
                                 Url = movieUrl,
                                 Name = string.Join("_", episodeName.Value.Split(Path.GetInvalidFileNameChars())),
-                                Number = int.Parse(episodeNumber.Value)
+                                Number = int.Parse(episodeNumber.Value),
+                                ConfigurationId = _configuration.Id
                             };
                         }
                     }
@@ -83,19 +86,19 @@ namespace CdaMovieDownloader.Extractors
             return default;
         }
 
-        public virtual Task<List<EpisodeDetails>> EnrichCdaDirectLink(ProgressContext progressContext, List<EpisodeDetails> episodeDetails)
+        public virtual Task<List<Episode>> EnrichDirectLink(ProgressContext progressContext, List<Episode> episodeDetails)
         {
             Parallel.ForEach(episodeDetails, new ParallelOptions() { MaxDegreeOfParallelism = _options.ParallelThreads },
                 async episode =>
                 {
                     AnsiConsole.WriteLine($"Getting direct link of {episode.Number}:{episode.Name}");
-                    await EnrichCdaDirectLink(progressContext, episode);
+                    await EnrichDirectLink(progressContext, episode);
                 });
 
             return Task.FromResult(episodeDetails);
         }
 
-        public async Task<EpisodeDetails> EnrichCdaDirectLink(ProgressContext progressContext, EpisodeDetails episodeDetail)
+        public async Task<Episode> EnrichDirectLink(ProgressContext progressContext, Episode episodeDetail)
         {
             await EnrichDirectLinkForEpisode(episodeDetail);
             if (!string.IsNullOrWhiteSpace(episodeDetail.DirectUrl))
@@ -105,9 +108,9 @@ namespace CdaMovieDownloader.Extractors
             return episodeDetail;
         }
 
-        public List<EpisodeDetails> ReadEpisodeDetailsFromExternal(Uri startPage)
+        public List<Episode> ReadEpisodeDetailsFromExternal(Uri startPage)
         {
-            var result = new List<EpisodeDetails>();
+            var result = new List<Episode>();
             var web = new HtmlWeb();
             var retryPolicy = new List<int>() { 1, 2, 3, 5, 8 }
             .Select(w => TimeSpan.FromSeconds(w));
@@ -121,7 +124,7 @@ namespace CdaMovieDownloader.Extractors
             var episodeList = startPageDocument.DocumentNode.SelectNodes("//tr[@class='lista_hover']");
             if (episodeList != null && episodeList.Any())
             {
-                Parallel.ForEach(episodeList, new ParallelOptions { MaxDegreeOfParallelism = 1 }, async episode =>
+                Parallel.ForEach(episodeList, new ParallelOptions { MaxDegreeOfParallelism = _options.ParallelThreads }, async episode =>
                 {
                     var hrefToMovie = episode.SelectSingleNode(".//a[@class='sub_inner_link']");
                     if (hrefToMovie == null)
@@ -157,7 +160,7 @@ namespace CdaMovieDownloader.Extractors
             return result;
         }
 
-        private async Task EditEntityAndDownload(ProgressContext progressContext, EpisodeDetails episode)
+        private async Task EditEntityAndDownload(ProgressContext progressContext, Episode episode)
         {
             await _episodeService.EditDirectLinkForEpisode(episode);
             _hub.Publish(new EpisodeWithContext(progressContext, episode));
