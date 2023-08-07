@@ -9,6 +9,11 @@ using System.Threading.Tasks;
 
 namespace CdaMovieDownloader
 {
+    public interface ICrawler
+    {
+        Task Start(ProgressContext progressContext);
+    }
+
     internal class Crawler : ICrawler
     {
         private readonly ILogger _logger;
@@ -31,7 +36,6 @@ namespace CdaMovieDownloader
 
         public async Task Start(ProgressContext progressContext)
         {
-
             if (!Directory.Exists(_configuration.OutputDirectory))
             {
                 Directory.CreateDirectory(_configuration.OutputDirectory);
@@ -46,19 +50,20 @@ namespace CdaMovieDownloader
             //filter episodes that are missed on the disk
             episodeDetailsToProcess = _checkEpisodes.GetMissingEpisodes(episodeDetailsToProcess);
 
+            Task downloadTask = null;
             if (episodeDetailsToProcess.Any(e => !string.IsNullOrWhiteSpace(e.DirectUrl)))
             {
-                AnsiConsole.WriteLine("Do you want to download missing episodes? [y/n] ");
-                if (Console.ReadLine() == "y")
-                {
-                    _downloader.DownloadFiles(progressContext, episodeDetailsToProcess);
-                }
+                downloadTask = _downloader.DownloadFiles(progressContext, episodeDetailsToProcess);
             }
 
             //Check episodes that doesn't have CDA Direct Link to the movie to be able download it later.
             var episodeDetailsWithMissingDirect = _configuration.Episodes.Where(ep => string.IsNullOrWhiteSpace(ep.DirectUrl)).ToList();
             episodeDetailsWithMissingDirect = _checkEpisodes.GetMissingEpisodes(episodeDetailsWithMissingDirect);
             var episodesToDownload = await _episodeDetailsExtractor.EnrichDirectLink(progressContext, episodeDetailsWithMissingDirect);
+            if(downloadTask != null)
+            {
+                await downloadTask;
+            }
         }
     }
 }

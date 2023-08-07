@@ -107,7 +107,6 @@ namespace CdaMovieDownloader.Extractors
                                 lock (_locker)
                                 {
                                     AnsiConsole.WriteLine($"Found direct link for episode number {episode.Number} in {quality}");
-                                    //_logger.Information("Found direct link for episode number {number} in {quality}", episode.Number, quality);
                                     episode.DirectUrl = cdaDirectLinkToMovie;
                                     _episodeService.EditDirectLinkForEpisode(episode);
                                 }
@@ -117,7 +116,7 @@ namespace CdaMovieDownloader.Extractors
                     }
                     catch (Exception e)
                     {
-                        //_logger.Error("Something goes wrong for {episode}, {episodeUrl}. {exception}", episode.Number, episode.Url, e.InnerException?.Message ?? e.Message);
+                        episode.DirectUrl = null;
                         continue;
                     }
                 }

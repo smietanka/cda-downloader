@@ -9,6 +9,17 @@ using System.Threading.Tasks;
 
 namespace CdaMovieDownloader.Services
 {
+    public interface IEpisodeService
+    {
+        Episode GetEpisodeForConfiguration(int number);
+        Episode GetEpisode(Guid id);
+        Task EditDirectLinkForEpisode(Episode episodeDetails);
+        Task AddEpisode(Episode episodeDetails);
+        List<Episode> GetAll();
+        List<Episode> GetAll(Expression<Func<Episode, bool>> prediction);
+        Task EditFileSize(Guid id, long size);
+    }
+
     public class EpisodeService : IEpisodeService
     {
         private readonly MovieContext _movieContext;
@@ -20,16 +31,16 @@ namespace CdaMovieDownloader.Services
             _configuration = configuration;
         }
 
-        public Episode GetEpisodeDetails(Episode episodeDetails)
+        public Episode GetEpisodeForConfiguration(int number)
         {
             return _movieContext.Episodes
                 .Include(e => e.Configuration)
-                .FirstOrDefault(ep => ep.Number == episodeDetails.Number && ep.ConfigurationId == _configuration.Id);
+                .FirstOrDefault(ep => ep.Number == number && ep.ConfigurationId == _configuration.Id);
         }
 
         public async Task EditDirectLinkForEpisode(Episode episodeDetails)
         {
-            var episodeToEdit = GetEpisodeDetails(episodeDetails);
+            var episodeToEdit = GetEpisodeForConfiguration(episodeDetails.Number);
             if (episodeToEdit is not null)
             {
                 episodeToEdit.DirectUrl = episodeDetails.DirectUrl;
@@ -47,15 +58,28 @@ namespace CdaMovieDownloader.Services
         {
             return _movieContext.Episodes
                 .Include(_ => _.Configuration)
-                //.Where(ep => ep.AnimeUrl == _configuration.Url.ToString())
                 .ToList();
         }
 
         public List<Episode> GetAll(Expression<Func<Episode, bool>> prediction)
         {
             return _movieContext.Episodes
-                //.Where(ep => ep.AnimeUrl == _configuration.Url.ToString())
                 .Where(prediction).ToList();
+        }
+
+        public async Task EditFileSize(Guid id, long size)
+        {
+            var episodeToEdit = GetEpisode(id);
+            if(episodeToEdit is not null)
+            {
+                episodeToEdit.FileSize = size;
+                await _movieContext.SaveChangesAsync();
+            }
+        }
+
+        public Episode GetEpisode(Guid id)
+        {
+            return _movieContext.Episodes.SingleOrDefault(w => w.Id == id);
         }
     }
 }

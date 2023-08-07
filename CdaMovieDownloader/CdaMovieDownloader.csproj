@@ -4,6 +4,7 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>net6.0</TargetFramework>
     <UserSecretsId>ab1ed0f7-86fc-417e-bde9-b6df030f8be5</UserSecretsId>
+	<ContainerImageName>dotnet-movie-downloader-image</ContainerImageName>
   </PropertyGroup>
 
   <ItemGroup>

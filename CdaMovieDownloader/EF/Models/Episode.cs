@@ -13,6 +13,7 @@ namespace CdaMovieDownloader.EF.Models
         public string Url { get; set; }
         public string DirectUrl { get; set; }
         public Guid ConfigurationId { get; set; }
+        public long FileSize { get; set; }
 
         public virtual Configuration Configuration { get; set; }
     }

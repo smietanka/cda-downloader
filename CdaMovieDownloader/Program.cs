@@ -15,6 +15,7 @@ using Serilog.Events;
 using Spectre.Console;
 using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 
 namespace CdaMovieDownloader
@@ -22,7 +23,6 @@ namespace CdaMovieDownloader
     public class Program
     {
         private static readonly ILogger _logger;
-
         static Program()
         {
             _logger = new LoggerConfiguration()
@@ -49,7 +49,7 @@ namespace CdaMovieDownloader
                 _logger.Error("There is no first argument");
                 return;
             }
-            
+
             var host = Host.CreateDefaultBuilder(args)
                 .ConfigureServices(services =>
                 {
@@ -83,6 +83,8 @@ namespace CdaMovieDownloader
                 .Build();
 
             var crawler = host.Services.GetService<ICrawler>();
+            var currentConfiguration = host.Services.GetService<Configuration>();
+            Console.WriteLine($"Start {currentConfiguration.Url}");
             await AnsiConsole
                 .Progress()
                 .AutoClear(false)

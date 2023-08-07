@@ -1,22 +1,16 @@
-FROM mcr.microsoft.com/dotnet/aspnet:6.0 AS base
+FROM mcr.microsoft.com/dotnet/sdk:6.0 AS build-env
+WORKDIR /App
 
-WORKDIR /app
+# Copy everything
+COPY . ./
+# Restore as distinct layers
+RUN dotnet restore
+# Build and publish a release
+RUN dotnet publish -c Release -o out
 
-##################################################
-
-FROM mcr.microsoft.com/dotnet/sdk:6.0 AS unit
-
-COPY . .
-
-FROM unit AS build
-
-RUN dotnet restore CdaMovieDownloader.csproj
-RUN dotnet publish CdaMovieDownloader.csproj -r linux-x64 -c Release
-
-##################################################
-
-FROM base AS final
-
-ENTRYPOINT ["dotnet", "WebAPI.dll"]
-
-COPY --from=build bin/Release/net6.0/linux-x64/publish .
+# Build runtime image
+FROM mcr.microsoft.com/dotnet/aspnet:6.0
+WORKDIR /App
+COPY --from=build-env /App/out .
+ENTRYPOINT ["dotnet", "CdaMovieDownloader.dll", $arg1]
+CMD ["arg1"]

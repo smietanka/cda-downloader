@@ -4,6 +4,11 @@ using System.Linq;
 
 namespace CdaMovieDownloader.Services
 {
+    public interface IConfigurationService
+    {
+        public Configuration GetConfiguration(Guid id);
+    }
+
     public class ConfigurationService : IConfigurationService
     {
         private readonly MovieContext _movieContext;
