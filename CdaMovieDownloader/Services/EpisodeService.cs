@@ -15,9 +15,9 @@ namespace CdaMovieDownloader.Services
         Episode GetEpisode(Guid id);
         Task EditDirectLinkForEpisode(Episode episodeDetails);
         Task AddEpisode(Episode episodeDetails);
-        List<Episode> GetAll();
-        List<Episode> GetAll(Expression<Func<Episode, bool>> prediction);
-        Task EditFileSize(Guid id, long size);
+        List<Episode> GetAllForConfiguration();
+        List<Episode> GetAllForConfiguration(Expression<Func<Episode, bool>> prediction);
+        Task EditFileSize(Guid id, int? size);
     }
 
     public class EpisodeService : IEpisodeService
@@ -54,20 +54,24 @@ namespace CdaMovieDownloader.Services
             await _movieContext.SaveChangesAsync();
         }
 
-        public List<Episode> GetAll()
+        public List<Episode> GetAllForConfiguration()
         {
             return _movieContext.Episodes
+                .Where(ep => ep.ConfigurationId == _configuration.Id)
                 .Include(_ => _.Configuration)
                 .ToList();
         }
 
-        public List<Episode> GetAll(Expression<Func<Episode, bool>> prediction)
+        public List<Episode> GetAllForConfiguration(Expression<Func<Episode, bool>> prediction)
         {
             return _movieContext.Episodes
-                .Where(prediction).ToList();
+                .Where(ep => ep.ConfigurationId == _configuration.Id)
+                .Where(prediction)
+                .Include(_ => _.Configuration)
+                .ToList();
         }
 
-        public async Task EditFileSize(Guid id, long size)
+        public async Task EditFileSize(Guid id, int? size)
         {
             var episodeToEdit = GetEpisode(id);
             if(episodeToEdit is not null)

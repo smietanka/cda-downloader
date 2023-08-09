@@ -56,10 +56,7 @@ namespace CdaMovieDownloader
                 downloadTask = _downloader.DownloadFiles(progressContext, episodeDetailsToProcess);
             }
 
-            //Check episodes that doesn't have CDA Direct Link to the movie to be able download it later.
-            var episodeDetailsWithMissingDirect = _configuration.Episodes.Where(ep => string.IsNullOrWhiteSpace(ep.DirectUrl)).ToList();
-            episodeDetailsWithMissingDirect = _checkEpisodes.GetMissingEpisodes(episodeDetailsWithMissingDirect);
-            var episodesToDownload = await _episodeDetailsExtractor.EnrichDirectLink(progressContext, episodeDetailsWithMissingDirect);
+            var episodesToDownload = await _episodeDetailsExtractor.EnrichDirectLink(progressContext, episodeDetailsToProcess);
             if(downloadTask != null)
             {
                 await downloadTask;

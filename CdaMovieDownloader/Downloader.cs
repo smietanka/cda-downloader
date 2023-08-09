@@ -55,9 +55,8 @@ namespace CdaMovieDownloader
                     if (response.Content.Headers.ContentLength.HasValue)
                     {
                         progressTask.MaxValue(response.Content.Headers.ContentLength.Value);
-                        _episodeService.EditFileSize(episode.Id, response.Content.Headers.ContentLength.Value);
+                        await _episodeService.EditFileSize(episode.Id, (int)response.Content.Headers.ContentLength.Value);
                     }
-                    
 
                     progressTask.StartTask();
                     using (var contentStream = await response.Content.ReadAsStreamAsync())

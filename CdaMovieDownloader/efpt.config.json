@@ -31,7 +31,7 @@
    "UseDateOnlyTimeOnly": false,
    "UseDbContextSplitting": false,
    "UseFluentApiOnly": true,
-   "UseHandleBars": false,
+   "UseHandleBars": true,
    "UseHierarchyId": false,
    "UseInflector": true,
    "UseLegacyPluralizer": false,
