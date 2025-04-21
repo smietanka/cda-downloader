@@ -1,66 +1,72 @@
-﻿using CdaMovieDownloader.Extractors;
+﻿using CdaMovieDownloader.Common.Options;
+using CdaMovieDownloader.Extractors;
 using CdaMovieDownloader.Services;
+using HtmlAgilityPack;
+using Microsoft.Extensions.Options;
+using OpenQA.Selenium.Edge;
+using Polly;
 using Serilog;
 using Spectre.Console;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 
-namespace CdaMovieDownloader
+namespace CdaMovieDownloader;
+
+public interface ICrawler
 {
-    public interface ICrawler
-    {
-        Task Start(ProgressContext progressContext);
-    }
+    Task Start(ProgressContext progressContext);
+}
 
-    internal class Crawler : ICrawler
-    {
-        private readonly ILogger _logger;
-        private readonly IDownloader _downloader;
-        private readonly IEpisodeDetailsExtractor _episodeDetailsExtractor;
-        private readonly ICheckEpisodes _checkEpisodes;
-        private readonly IEpisodeService _episodeService;
-        private readonly Configuration _configuration;
+internal class Crawler(ILogger logger, IDownloader downloader, IEpisodeDetailsExtractor episodeDetailsExtractor, IEpisodeService episodeService,
+    ICheckEpisodes checkEpisodes, IConfigurationService configurationService,
+    IOptions<ConfigurationOptions> options) : ICrawler
+{
+    private readonly ILogger _logger = logger;
+    private readonly IDownloader _downloader = downloader;
+    private readonly IEpisodeDetailsExtractor _episodeDetailsExtractor = episodeDetailsExtractor;
+    private readonly IEpisodeService _episodeService = episodeService;
+    private readonly ICheckEpisodes _checkEpisodes = checkEpisodes;
+    private readonly IConfigurationService _configurationService = configurationService;
+    private readonly ConfigurationOptions _options = options.Value;
 
-        public Crawler(ILogger logger, IDownloader downloader, IEpisodeDetailsExtractor episodeDetailsExtractor, 
-            ICheckEpisodes checkEpisodes, Configuration configuration, IEpisodeService episodeService)
+    public async Task Start(ProgressContext progressContext)
+    {
+        var config = await _configurationService.GetConfigurationAsync(_options.Id);
+        if (!Directory.Exists(config.OutputDirectory))
         {
-            _logger = logger;
-            _downloader = downloader;
-            _episodeDetailsExtractor = episodeDetailsExtractor;
-            _checkEpisodes = checkEpisodes;
-            _configuration = configuration;
-            _episodeService = episodeService;
+            Directory.CreateDirectory(config.OutputDirectory);
         }
 
-        public async Task Start(ProgressContext progressContext)
+        var episodesToDownload = new List<Episode>();
+        // not downloaded episodes without direct url
+        var episodesToExtractDirect = config.Episodes.Where(x => !x.IsDownloaded && string.IsNullOrEmpty(x.DirectUrl)).ToList();
+        if (episodesToExtractDirect.Any())
         {
-            if (!Directory.Exists(_configuration.OutputDirectory))
-            {
-                Directory.CreateDirectory(_configuration.OutputDirectory);
-            }
+            episodesToDownload.AddRange(await _episodeDetailsExtractor.EnrichDirectLink(progressContext, episodesToExtractDirect));
+        }
 
-            var episodeDetailsToProcess = _configuration.Episodes.ToList();
-            if (!episodeDetailsToProcess.Any())
-            {
-                episodeDetailsToProcess = await _episodeDetailsExtractor.EnrichDirectLink(progressContext, _episodeDetailsExtractor.ReadEpisodeDetailsFromExternal(new Uri(_configuration.Url)));
-            }
+        var notDownloadedEpisodes = config.Episodes.Where(x => !x.IsDownloaded).ToList();
+        if (notDownloadedEpisodes.Any())
+        {
+            episodesToDownload.AddRange(notDownloadedEpisodes);
+        }
 
-            //filter episodes that are missed on the disk
-            episodeDetailsToProcess = _checkEpisodes.GetMissingEpisodes(episodeDetailsToProcess);
+        //filter episodes that are missed on the disk
+        episodesToDownload = await _checkEpisodes.GetMissingEpisodesAsync(episodesToDownload);
 
-            Task downloadTask = null;
-            if (episodeDetailsToProcess.Any(e => !string.IsNullOrWhiteSpace(e.DirectUrl)))
-            {
-                downloadTask = _downloader.DownloadFiles(progressContext, episodeDetailsToProcess);
-            }
+        Task downloadTask = null;
+        if (episodesToDownload.Any(e => !string.IsNullOrWhiteSpace(e.DirectUrl)))
+        {
+            AnsiConsole.WriteLine($"Downloading {episodesToDownload.Count} episodes");
+            downloadTask = _downloader.DownloadFiles(progressContext, episodesToDownload);
+        }
 
-            var episodesToDownload = await _episodeDetailsExtractor.EnrichDirectLink(progressContext, episodeDetailsToProcess);
-            if(downloadTask != null)
-            {
-                await downloadTask;
-            }
+        if(downloadTask != null)
+        {
+            await downloadTask;
         }
     }
 }

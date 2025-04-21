@@ -1,9 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
-using CdaMovieDownloader.Data;
+using System.IO;
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.EntityFrameworkCore.Metadata;
-using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 
 namespace CdaMovieDownloader.EF.Models
 {
@@ -12,42 +11,50 @@ namespace CdaMovieDownloader.EF.Models
         public virtual DbSet<Configuration> Configurations { get; set; }
         public virtual DbSet<Episode> Episodes { get; set; }
 
-        public MovieContext(DbContextOptions<MovieContext> options) : base(options)
+        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
         {
-        }
+            if (!optionsBuilder.IsConfigured)
+            {
+                var dbPath = Path.Combine("X:\\MOJE\\Programowanie\\C#\\CdaMovieDownloader\\CdaMovieDownloader", "cda-db.db");
 
+                optionsBuilder.UseSqlite($"Data Source={dbPath}");
+            }
+        }
         protected override void OnModelCreating(ModelBuilder modelBuilder)
         {
             modelBuilder.Entity<Configuration>(entity =>
             {
-                entity.Property(e => e.Id).HasDefaultValueSql("gen_random_uuid()");
-
-                entity.Property(e => e.MaxQuality)
-                    .HasConversion(new EnumToStringConverter<Quality>())
-                .IsRequired();
+                entity.Property(e => e.MaxQuality).IsRequired();
 
                 entity.Property(e => e.OutputDirectory).IsRequired();
 
-                entity.Property(e => e.Provider)
-                    .HasConversion(new EnumToStringConverter<Provider>())
-                .IsRequired();
+                entity.Property(e => e.Provider).IsRequired();
 
                 entity.Property(e => e.Url).IsRequired();
             });
 
             modelBuilder.Entity<Episode>(entity =>
             {
-                entity.Property(e => e.Id).ValueGeneratedNever();
+                entity.HasIndex(e => e.ConfigurationId, "IX_Episodes_ConfigurationId");
+
+                entity.Property(e => e.ConfigurationId).IsRequired();
 
                 entity.Property(e => e.Name).IsRequired();
 
                 entity.Property(e => e.Url).IsRequired();
 
+                entity.Property(e => e.IsDownloaded).IsRequired()
+                    .HasDefaultValue(false);
+
+                entity.Property(c => c.Metadata)
+                    .HasConversion(
+                    v => JsonSerializer.Serialize(v, (JsonSerializerOptions)null),
+                    v => JsonSerializer.Deserialize<Dictionary<string, object>>(v, (JsonSerializerOptions)null));
+
                 entity.HasOne(d => d.Configuration)
                     .WithMany(p => p.Episodes)
                     .HasForeignKey(d => d.ConfigurationId)
-                    .OnDelete(DeleteBehavior.ClientSetNull)
-                    .HasConstraintName("FK_ConfigurationId_Configurations_Id");
+                    .OnDelete(DeleteBehavior.ClientSetNull);
             });
 
             OnModelCreatingPartial(modelBuilder);

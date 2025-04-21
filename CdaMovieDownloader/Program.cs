@@ -15,97 +15,94 @@ using Serilog.Events;
 using Spectre.Console;
 using System;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 
-namespace CdaMovieDownloader
+namespace CdaMovieDownloader;
+
+public class Program
 {
-    public class Program
+    private static readonly ILogger _logger;
+    static Program()
     {
-        private static readonly ILogger _logger;
-        static Program()
-        {
-            _logger = new LoggerConfiguration()
-                .WriteTo.Console(LogEventLevel.Verbose)
-                .WriteTo.Async(
-                    a => a.File("Logs/", flushToDiskInterval: TimeSpan.FromSeconds(5), restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Verbose,
-                    rollingInterval: RollingInterval.Hour,
-                    retainedFileCountLimit: 3,
-                    rollOnFileSizeLimit: true,
-                    shared: true))
-                .MinimumLevel.Verbose()
-                .CreateLogger();
-            Log.Logger = _logger;
-        }
+        _logger = new LoggerConfiguration()
+            .WriteTo.Console(LogEventLevel.Verbose)
+            .WriteTo.Async(
+                a => a.File("Logs/", flushToDiskInterval: TimeSpan.FromSeconds(5), restrictedToMinimumLevel: Serilog.Events.LogEventLevel.Verbose,
+                rollingInterval: RollingInterval.Hour,
+                retainedFileCountLimit: 3,
+                rollOnFileSizeLimit: true,
+                shared: true))
+            .MinimumLevel.Verbose()
+            .CreateLogger();
+        Log.Logger = _logger;
+    }
 
-        static async Task Main(string[] args)
-        {
-            var configuration = new ConfigurationBuilder()
-                .AddJsonFile("appsettings.json", true, true)
-                .Build();
+    static async Task Main(string[] args)
+    {
+        var configuration = new ConfigurationBuilder()
+            .AddJsonFile("appsettings.json", true, true)
+            .Build();
 
-            if(!Guid.TryParse(args.FirstOrDefault(), out var configurationId))
+        var host = Host.CreateDefaultBuilder(args)
+            .ConfigureServices(services =>
             {
-                _logger.Error("There is no first argument");
-                return;
-            }
+                services.Configure<ConfigurationOptions>(configuration.GetSection("MainSettings"));
+                services.AddScoped<IDownloader, Downloader>();
+                services.AddDbContext<MovieContext>();
+                services.AddScoped<ICheckEpisodes, CheckEpisodes>();
+                services.AddScoped<IEpisodeService, EpisodeService>();
+                services.AddScoped<IConfigurationService, ConfigurationService>();
+                services.AddScoped<EpisodeDetailsSubscriber>();
+                services.AddScoped<Hub>();
 
-            var host = Host.CreateDefaultBuilder(args)
-                .ConfigureServices(services =>
-                {
-                    services.Configure<ConfigurationOptions>(configuration.GetSection("MainSettings"));
-                    services.AddSingleton<IDownloader, Downloader>();
-                    services.AddDbContext<MovieContext>(builder => builder.UseNpgsql(configuration.GetConnectionString("CdaMovieDatabase"))
-                        .EnableSensitiveDataLogging(true)
-                        .UseQueryTrackingBehavior(QueryTrackingBehavior.TrackAll)
-                    );
-                    services.AddSingleton<ICheckEpisodes, CheckEpisodes>();
-                    services.AddSingleton<IEpisodeService, EpisodeService>();
-                    services.AddSingleton<IConfigurationService, ConfigurationService>();
-                    services.AddSingleton<EpisodeDetailsSubscriber>();
-                    services.AddSingleton<Hub>();
-                    var sp = services.BuildServiceProvider();
-                    var settings = sp.GetService<IConfigurationService>()
-                        .GetConfiguration(configurationId);
+                services.AddScoped<IEpisodeDetailsExtractor, NanasubsExtractor>();
 
-                    services.AddSingleton(settings);
+                services.AddScoped<ICrawler, Crawler>();
+                services.AddSingleton(_logger);
+                services.AddHttpClient();
+                services.AddEdgeBrowser();
+            })
+            .Build();
 
-                    if (settings?.Provider == Provider.cda)
-                        services.AddSingleton<IEpisodeDetailsExtractor, CdaEpisodeDetailsExtractor>();
-                    if (settings?.Provider == Provider.mp4up)
-                        services.AddSingleton<IEpisodeDetailsExtractor, Mp4upEpisodeDetailsExtractor>();
+        using var scope = host.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<MovieContext>();
+        db.Database.EnsureCreated();
+        db.Database.Migrate();
 
-                    services.AddSingleton<ICrawler, Crawler>();
-                    services.AddSingleton(_logger);
-                    services.AddHttpClient();
-                    services.AddEdgeBrowser();
-                })
-                .Build();
-
-            var crawler = host.Services.GetService<ICrawler>();
-            var currentConfiguration = host.Services.GetService<Configuration>();
-            Console.WriteLine($"Start {currentConfiguration.Url}");
-            await AnsiConsole
-                .Progress()
-                .AutoClear(false)
-                .HideCompleted(true)
-                .Columns(new ProgressColumn[]
-                {
-                    new SpinnerColumn(),
-                    new TaskDescriptionColumn(),
-                    new ProgressBarColumn(),
-                    new PercentageColumn(),
-                    new RemainingTimeColumn()
-                })
-                .StartAsync(async ctx =>
-                {
-                    await crawler.Start(ctx);
-                    while (!ctx.IsFinished)
-                    {
-                        await Task.Delay(1000);
-                    }
-                });
-            AnsiConsole.WriteLine("Finished");
+        var configurationService = scope.ServiceProvider.GetRequiredService<IConfigurationService>();
+        var settings = await configurationService.GetConfigurationsAsync();
+        if (settings.Count == 0)
+        {
+            var result = await configurationService.AddConfigurationAsync(new Configuration
+            {
+                Provider = Provider.cda,
+                MaxQuality = Quality.FHD,
+                OutputDirectory = "one piece",
+                Url = "https://nanasubs.com.pl/anime/one-piece"
+            });
         }
+
+        var crawler = scope.ServiceProvider.GetService<ICrawler>();
+        await AnsiConsole
+            .Progress()
+            .AutoClear(false)
+            .HideCompleted(true)
+            .Columns(
+            [
+                new SpinnerColumn(),
+                new TaskDescriptionColumn(),
+                new ProgressBarColumn(),
+                new PercentageColumn(),
+                new RemainingTimeColumn()
+            ])
+            .StartAsync(async ctx =>
+            {
+                await crawler.Start(ctx);
+                while (!ctx.IsFinished)
+                {
+                    await Task.Delay(1000);
+                }
+            });
+        AnsiConsole.WriteLine("Finished");
     }
 }

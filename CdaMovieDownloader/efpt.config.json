@@ -1,5 +1,5 @@
 ﻿{
-   "CodeGenerationMode": 2,
+   "CodeGenerationMode": 4,
    "ContextClassName": "MovieContext",
    "ContextNamespace": null,
    "DefaultDacpacSchema": null,
@@ -16,27 +16,29 @@
    "T4TemplatePath": null,
    "Tables": [
       {
-         "Name": "public.Configurations",
+         "Name": "Configurations",
          "ObjectType": 0
       },
       {
-         "Name": "public.Episodes",
+         "Name": "Episodes",
          "ObjectType": 0
       }
    ],
-   "UiHint": ".cda-movies",
+   "UiHint": "X:\\MOJE\\Programowanie\\C#\\CdaMovieDownloader\\CdaMovieDownloader\\bin\\Debug\\net8.0\\cda-downloader.db",
    "UncountableWords": null,
    "UseBoolPropertiesWithoutDefaultSql": false,
    "UseDatabaseNames": false,
    "UseDateOnlyTimeOnly": false,
    "UseDbContextSplitting": false,
+   "UseDecimalDataAnnotationForSprocResult": true,
    "UseFluentApiOnly": true,
    "UseHandleBars": true,
    "UseHierarchyId": false,
    "UseInflector": true,
-   "UseLegacyPluralizer": false,
+   "UseLegacyPluralizer": true,
    "UseManyToManyEntity": false,
    "UseNoDefaultConstructor": true,
+   "UseNoNavigations": false,
    "UseNoObjectFilter": false,
    "UseNodaTime": false,
    "UseNullableReferences": false,

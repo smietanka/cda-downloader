@@ -28,7 +28,6 @@ namespace CdaMovieDownloader.Data
 
     public enum Provider
     {
-        cda,
-        mp4up
+        cda
     }
 }

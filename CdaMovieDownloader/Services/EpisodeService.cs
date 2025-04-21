@@ -7,83 +7,99 @@ using System.Linq;
 using System.Linq.Expressions;
 using System.Threading.Tasks;
 
-namespace CdaMovieDownloader.Services
+namespace CdaMovieDownloader.Services;
+
+public interface IEpisodeService
 {
-    public interface IEpisodeService
+    Task<Episode> GetEpisodeForConfiguration(double number);
+    Episode GetEpisode(Guid id);
+    Task EditDirectLinkForEpisode(Episode episodeDetails);
+    Task AddEpisode(Episode episodeDetails);
+    Task EditMetadata(Guid id, Dictionary<string, object> metadata);
+    List<Episode> GetAllForConfiguration();
+    List<Episode> GetAllForConfiguration(Expression<Func<Episode, bool>> prediction);
+    Task EditFileSize(Guid id, int? size);
+    Task EditIsDownloaded(Guid id, bool isDownloaded);
+}
+
+public class EpisodeService(MovieContext movieContext, IOptions<ConfigurationOptions> configuration) : IEpisodeService
+{
+    private readonly MovieContext _movieContext = movieContext;
+    private readonly ConfigurationOptions _configuration = configuration.Value;
+    private static readonly object _locker = new object();
+
+    public async Task<Episode> GetEpisodeForConfiguration(double number)
     {
-        Episode GetEpisodeForConfiguration(int number);
-        Episode GetEpisode(Guid id);
-        Task EditDirectLinkForEpisode(Episode episodeDetails);
-        Task AddEpisode(Episode episodeDetails);
-        List<Episode> GetAllForConfiguration();
-        List<Episode> GetAllForConfiguration(Expression<Func<Episode, bool>> prediction);
-        Task EditFileSize(Guid id, int? size);
+        return await _movieContext.Episodes
+            .Include(e => e.Configuration)
+            .FirstOrDefaultAsync(ep => ep.Number == number && ep.ConfigurationId == _configuration.Id);
     }
 
-    public class EpisodeService : IEpisodeService
+    public async Task EditDirectLinkForEpisode(Episode episodeDetails)
     {
-        private readonly MovieContext _movieContext;
-        private readonly Configuration _configuration;
-
-        public EpisodeService(MovieContext movieContext, Configuration configuration)
+        var episodeToEdit = await GetEpisodeForConfiguration(episodeDetails.Number);
+        if (episodeToEdit is not null)
         {
-            _movieContext = movieContext;
-            _configuration = configuration;
+            episodeToEdit.DirectUrl = episodeDetails.DirectUrl;
         }
+        await _movieContext.SaveChangesAsync();
+    }
 
-        public Episode GetEpisodeForConfiguration(int number)
-        {
-            return _movieContext.Episodes
-                .Include(e => e.Configuration)
-                .FirstOrDefault(ep => ep.Number == number && ep.ConfigurationId == _configuration.Id);
-        }
+    public async Task AddEpisode(Episode episodeDetails)
+    {
+        await _movieContext.AddAsync(episodeDetails);
+        await _movieContext.SaveChangesAsync();
+    }
 
-        public async Task EditDirectLinkForEpisode(Episode episodeDetails)
+    public List<Episode> GetAllForConfiguration()
+    {
+        return _movieContext.Episodes
+            .Where(ep => ep.ConfigurationId == _configuration.Id)
+            .Include(_ => _.Configuration)
+            .ToList();
+    }
+
+    public List<Episode> GetAllForConfiguration(Expression<Func<Episode, bool>> prediction)
+    {
+        return _movieContext.Episodes
+            .Where(ep => ep.ConfigurationId == _configuration.Id)
+            .Where(prediction)
+            .Include(_ => _.Configuration)
+            .ToList();
+    }
+
+    public async Task EditFileSize(Guid id, int? size)
+    {
+        var episodeToEdit = GetEpisode(id);
+        if(episodeToEdit is not null)
         {
-            var episodeToEdit = GetEpisodeForConfiguration(episodeDetails.Number);
-            if (episodeToEdit is not null)
-            {
-                episodeToEdit.DirectUrl = episodeDetails.DirectUrl;
-            }
+            episodeToEdit.FileSize = size;
             await _movieContext.SaveChangesAsync();
         }
+    }
 
-        public async Task AddEpisode(Episode episodeDetails)
+    public Episode GetEpisode(Guid id)
+    {
+        return _movieContext.Episodes.SingleOrDefault(w => w.Id == id);
+    }
+
+    public async Task EditMetadata(Guid id, Dictionary<string, object> metadata)
+    {
+        var episode = GetEpisode(id);
+        if(episode is not null)
         {
-            await _movieContext.AddAsync(episodeDetails);
+            episode.Metadata = metadata;
             await _movieContext.SaveChangesAsync();
         }
+    }
 
-        public List<Episode> GetAllForConfiguration()
+    public async Task EditIsDownloaded(Guid id, bool isDownloaded)
+    {
+        var episode = GetEpisode(id);
+        if (episode is not null)
         {
-            return _movieContext.Episodes
-                .Where(ep => ep.ConfigurationId == _configuration.Id)
-                .Include(_ => _.Configuration)
-                .ToList();
-        }
-
-        public List<Episode> GetAllForConfiguration(Expression<Func<Episode, bool>> prediction)
-        {
-            return _movieContext.Episodes
-                .Where(ep => ep.ConfigurationId == _configuration.Id)
-                .Where(prediction)
-                .Include(_ => _.Configuration)
-                .ToList();
-        }
-
-        public async Task EditFileSize(Guid id, int? size)
-        {
-            var episodeToEdit = GetEpisode(id);
-            if(episodeToEdit is not null)
-            {
-                episodeToEdit.FileSize = size;
-                await _movieContext.SaveChangesAsync();
-            }
-        }
-
-        public Episode GetEpisode(Guid id)
-        {
-            return _movieContext.Episodes.SingleOrDefault(w => w.Id == id);
+            episode.IsDownloaded = isDownloaded;
+            await _movieContext.SaveChangesAsync();
         }
     }
 }
